@@ -27,7 +27,7 @@ def obtener_df_taco_restaurant(file_name: str) -> pd.DataFrame:
 if __name__ == "__main__":
     # Obtenemos lista con todos los archivos
     files = list_repo_files(
-        repo_id='foursquare/fsq-os-places',
+        repo_id='release/dt=2025-08-07/places/parquet',
         repo_type='dataset'
     )
 
@@ -57,8 +57,8 @@ if __name__ == "__main__":
     for file in filtrados:
         try:
             df_taco = obtener_df_taco_restaurant(file)
-            df_taco = df_taco.loc[df_taco['country'] == 'MX']
-            df_taco = df_taco.dropna(subset=['latitude', 'longitude'])
+            #df_taco = df_taco.loc[df_taco['country'] == 'MX']
+            #df_taco = df_taco.dropna(subset=['latitude', 'longitude'])
             
             if len(df_taco) > 0:  # Solo guardar si hay datos
                 df_taco.to_csv(f'data/taco_restaurant_{i}.csv', index=False)
