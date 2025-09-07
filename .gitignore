@@ -1,2 +1,8 @@
 *data/
 *.DS_Store
+# Archivos pesados de datos
+tarea1/data/
+tarea1/data_negocios/
+tarea1/negocios_mexico.csv
+# Archivos de sistema
+.DS_Store

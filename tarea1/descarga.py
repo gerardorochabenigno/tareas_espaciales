@@ -106,6 +106,16 @@ def obtener_df_taco_restaurant(file_name:str ) -> pd.DataFrame:
     
     return taco_restaurant
 
+def obtener_datos_centroide(file_name:str ) -> pd.DataFrame:
+    """Método para descargar un parquet de Hugging Face y preprocesarlos - Parte 2"""
+    url = "https://huggingface.co/datasets/foursquare/fsq-os-places/resolve/main/" + file_name
+    df = pd.read_parquet(url)
+    df = df.dropna(subset=['fsq_category_labels'])
+    df['labels_str'] = df['fsq_category_labels'].apply(lambda x: ', '.join(x).lower())
+    df = df.dropna(subset=['latitude', 'longitude','labels_str','country','region'])
+    df = df.loc[df['country']=='MX']
+    df = df[df['date_closed'].isnull()]
+    return df
 
 if __name__=="__main__":
     # Obtenemos lista con ñ
@@ -119,6 +129,7 @@ if __name__=="__main__":
     hf_path = 'release/dt=2025-08-07/places/parquet' # La partición más reciente de la información
     parquet_files = [file for file in files if file.startswith(hf_path) and file.endswith('.parquet')]
     os.makedirs('data', exist_ok=True)
+    os.makedirs('data_negocios', exist_ok=True)
 
     # Descargamos los archivos individuales y los preprocesamos
     i = 0
@@ -130,8 +141,10 @@ if __name__=="__main__":
             path = path.replace('=', '_')
             path = path.replace('-', '_')
             
+            df_negocios_mx = obtener_datos_centroide(file)
             df_taco = obtener_df_taco_restaurant(file)
             df_taco.to_csv(f"data/taco_{path[:-13]}.csv", index=False)
+            df_negocios_mx.to_csv(f"data_negocios/negocio_{path[:-13]}.csv", index=False)
             print(f"{i}: File {file} preprocesado y guardado con éxito")
             i += 1
         except Exception as e:
@@ -139,21 +152,28 @@ if __name__=="__main__":
 
     # Juntamos los dataframes individuales y lo escribimos en "taquerias_cdmx.csv"
     try:
-        # Leemos los archivos de la carpeta "data"
+        # Leemos los archivos de la carpeta "data" y "data_negocios"
         files = os.listdir("data") 
+        files_negocios = os.listdir("data_negocios") 
 
-        # Listamos los archivos que terminan en ".csv" de la carpeta "data"
+        # Listamos los archivos que terminan en ".csv" de la carpeta "data" y "data_negocios"
         csv_files = [file for file in files if file.endswith('.csv') and file.startswith('taco_release_dt')]
+        csv_files_negocios = [file for file in files_negocios if file.endswith('.csv') and file.startswith('negocio')]
 
         # Cargamos los DataFrames individuales
         dfs = [pd.read_csv(os.path.join("data", file)) for file in csv_files]
-
+        dfs_negocios = [pd.read_csv(os.path.join("data_negocios", file)) for file in csv_files_negocios]
+        
         # Descartamos DataFrames vacíos
         dfs = [df for df in dfs if df.shape[0] != 0]
+        dfs_negocios = [df for df in dfs_negocios if df.shape[0] != 0]
 
         # Armamos un solo DataFrame
         df = pd.concat(dfs, ignore_index=True)
         df.to_csv("data/taquerias_cdmx.csv", index=False)
+        df_negocio = pd.concat(dfs_negocios, ignore_index=True)
+        df_negocio.to_csv("data_negocios/negocios_mexico.csv", index=False)
+
 
     except Exception as e:
         print(f"Error al cargar y concatenar los archivos CSV: {e}")
