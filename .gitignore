@@ -6,3 +6,5 @@ tarea1/data_negocios/
 tarea1/negocios_mexico.csv
 # Archivos de sistema
 .DS_Store
+.DS_Store
+taller/data/

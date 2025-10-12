@@ -1,0 +1,393 @@
+---
+title: "Taller 1"
+author: "Gerardo Rocha Benigno y Daniel Michell Perez Ruiz"
+date: "2025-10-07"
+output:
+  pdf_document:
+    fig_caption: false
+
+---
+
+## Parte 1
+
+Para la primera parte del Taller, se determinaron en cada estado las manzanas que se encuentran a un radio de 3KM a la redonda utilizando la información del Censo de Población y Vivienda 2020, el respectivo Marco Geoestadístico y centroides provistos. 
+
+Una vez hecho lo anterior, se calcularon las siguientes métricas respecto al total de viviendas habitadas en las manzanas seleccionadas:
+
+ - Población por vivienda habitada,
+ - Ratio de viviendas particulares que disponen de energía electríca (poblacion),
+ - Ratio de viviendas que disponen de sanitario (Sanitario),
+ - Ratio de viviendas que disponen de drenaje (Drenaje),
+ - Ratio de viviendas que disponen de refrigerador (Refrigerador),
+ - Ratio de viviendas que disponen de automóvil (Automóvil),
+ - Ratio de viviendas que disponen de televisor (Televisor),
+ - Ratio de viviendas que disponen de computadora (Computadora),
+ - Ratio de viviendas que disponen de celular (Celular),
+ - Ratio de viviendas que disponen de internet (internet),
+ - Ratio de viviendas que disponen de TV de paga (TV paga),
+ - Ratio de viviendas que disponen de videojuegos (Videojuegos),
+
+La Tabla 1 muestra los resultados
+
+```{r, echo=FALSE, include=FALSE}
+rm(list=ls())
+library(tidyverse)
+library(lubridate)
+library(readxl)
+library(readr)
+library(sf)
+library(gt)
+library(cluster)
+library(leaflet)
+library(mapview)
+
+```
+
+
+```{r, echo=FALSE, include=TRUE}
+
+# Primero correr taller_1_resumen.R que contiene la rutina para calcualr las métricas por estado. Aquí no lo corro debido al tiempo que llevaría correr todo el código
+df_centros <- read_xlsx("./data/centros.xlsx")
+df_centros$CVE_ENT <- c("01","02","03","04","07","08","09","05","06","10","11","12","13","14",
+                        "16","17","15","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32")
+
+df_centros <- df_centros |>
+  mutate(Estado = str_replace(Estado, "Veracruz.*", "Veracruz"),
+         Estado = str_replace(Estado, "Michoacán.*", "Michoacán"),
+         Estado = str_replace(Estado, "Coahuila.*", "Coahuila"))
+
+
+resultados_finales <- read.csv("data/resultados_finales.csv") |>
+  mutate(
+    CVE_ENT = str_pad(as.character(CVE_ENT), width = 2, pad = "0", side = "left")
+  )
+
+# Calculamos métricas
+df_metricas <- resultados_finales |> 
+  left_join(df_centros, by="CVE_ENT") |>
+  select(-c(lat, lon)) |>
+  mutate(
+    Poblacion = POBTOT_tot / max_viviendas_tot,
+    Sanitario = VPH_C_ELEC_tot / max_viviendas_tot,
+    Drenaje = VPH_C_ELEC_tot / max_viviendas_tot,
+    Refrigerador = VPH_DRENAJ_tot  / max_viviendas_tot,
+    Automovil = VPH_AUTOM_tot / max_viviendas_tot,
+    Televisor = VPH_TV_tot / max_viviendas_tot,
+    Computadora = VPH_PC_tot  / max_viviendas_tot,
+    Celular = VPH_CEL_tot / max_viviendas_tot,
+    Internet = VPH_INTER_tot / max_viviendas_tot,
+    TV_paga = VPH_STVP_tot / max_viviendas_tot,
+    Videojuegos = VPH_CVJ_tot / max_viviendas_tot,
+  ) |>
+  select(Estado, Poblacion, Sanitario, Drenaje, Refrigerador, Automovil, Televisor, Computadora, Celular, Internet, TV_paga, Videojuegos)
+
+
+df_metricas |>
+  select(Estado, Poblacion, Sanitario, Drenaje, Refrigerador, Automovil) |>
+  gt() |>
+  tab_header(
+    title = "Tabla 1. Métricas resumen"
+  ) |>
+  fmt_number(
+    columns = c(Poblacion, Sanitario, Drenaje, Refrigerador, Automovil),
+    decimals = 2
+  )
+
+df_metricas |>
+  select(Estado, Televisor, Computadora, Celular, Internet, TV_paga, Videojuegos) |>
+  gt() |>
+  tab_header(
+    title = "Tabla 1. Métricas resumen (continuación)"
+  ) |>
+  fmt_number(
+    columns = c(Televisor, Computadora, Celular, Internet, TV_paga, Videojuegos),
+    decimals = 2
+  )
+
+```
+
+
+Una vez que tenemos las  tabla de características. Procedemos a realizaer un análisis de clusters. El primer paso de dicho análisis es determinar el número óptimo de conglomerados, por lo que haremos un gráfico de codo tal efecto. En la Gráfica 1 se muestra ua gráfica de codo para determinar el número óptimo de conglomerados para la agrupación. Aquí utilizaremos 4 clusters.
+
+
+```{r, echo=FALSE, include=TRUE}
+# Preparamos los datos (removemos estado porque no es una variable informativa)
+A <- df_metricas |> select(-Estado)
+
+# Matriz para almacenar los resultados
+mat <- matrix(0, 6, 2) %>% data.frame()
+colnames(mat) <- c("cluster", "withinss")
+
+# Loop para probar distintos números de clusters
+for (i in 1:6) {
+  model <- kmeans(A, centers = i)
+  mat$cluster[i] <- i
+  mat$withinss[i] <- model$tot.withinss
+}
+
+model_4=kmeans(A,4)
+# Gráfica de codo
+plot(mat$withinss, type = "b", xlab = "Número de clusters", ylab = "Within", main="Gráfica 1. Método de codo para determinar clusters", ylim = c(0, 14))
+```
+
+Para mostrar en qué se diferencia cada grupo del resto, mostramos una tabla con el probledio de cada variable de interés. En ella podemos observar lo siguiente:
+
+ - El conglomerado 1 tiene, en promedio, la menor cantidad de habitantes por vivienda, mientras que el conglomerado 3 tiene el mayor.
+ - No todas las viviendas de los conglomerados 1, 2 y 3 cuentan con drenaje.
+ - El conglomerado 3 es el que contiene a la menor cantidad de hogares con refrigerador mientras que el conglomerado 1 cuenta casi con el 100% de los hogares con refrigerador.
+ - En el conglomerado 3 hay más hogares con automóvil y en el conglomerado 1 hay menos.
+ - Más del 50% de los hogares del conglomerado 4 cuentan con computadora, mientras que menos del 30% de los hogares del conglomerado 3 cuenta con una.
+ - Todos los conglomerados cuentan con una proporción similar de hogares con celular.
+ - El conglomerado 4 cuenta con una mayor proporcipón de hogares con internet.
+ - Sucede lo mismo que en el bullet anterior para el caso de TV de paga.
+ - En el conglomerado 3 se encuentran hogares con baja propensión a tener una consola de videojuegos, mientras que en el conglomerado 4 ocurre lo contrario.
+
+```{r, echo=FALSE, include=TRUE}
+df_cluster <- A |>
+  mutate(Cluster = model_4$cluster) |>
+  group_by(Cluster) |>
+  summarise(
+    Poblacion = mean(Poblacion),
+    Sanitario = mean(Sanitario),
+    Drenaje = mean(Drenaje),
+    Refrigerador = mean(Refrigerador),
+    Automovil = mean(Automovil),
+    Televisor = mean(Televisor),
+    Computadora = mean(Computadora),
+    Celular = mean(Celular),
+    Internet = mean(Internet),
+    TV_paga = mean(TV_paga),
+    Videojuegos = mean(Videojuegos)
+  )
+
+df_cluster |>
+  pivot_longer(
+    cols = -Cluster,  # O la columna que identifica el conglomerado
+    names_to = "Variable",
+    values_to = "Valor"
+  ) |>
+  pivot_wider(
+    names_from = Cluster,
+    values_from = Valor
+  ) |>
+  gt() |>
+  tab_header(
+    title = "Tabla 2. Promedios por conglomerado"
+  ) |>
+  fmt_number(
+    columns = -Variable,
+    decimals = 3
+  )
+
+```
+
+En la Gráfica 5 se muestra que estados se encuentran en cada conglomerado.
+
+```{r, echo=FALSE, include=TRUE}
+file_estados <- "data/mg_2020_integrado/conjunto_de_datos/00ent.shp"
+df_estados <- st_read(file_estados, quiet = TRUE) |>
+  select(CVE_ENT, geometry)
+
+df_mapa <- resultados_finales |> 
+  left_join(df_centros, by = "CVE_ENT") |>
+  select(-c(lat, lon, X)) |>
+  mutate(cluster = model_4$cluster)
+
+df_mapa <- df_estados |>
+  left_join(df_mapa, by = "CVE_ENT") |>
+  select(geometry, cluster)
+
+df_mapa <- st_transform(df_mapa, crs = 4326)
+
+# Creamos paleta de colores
+pal <- colorFactor(palette = c("red", "blue", "green", "yellow"), 
+                   domain = df_mapa$cluster)
+
+# Crear mapa
+mapa <-leaflet(df_mapa, options = leafletOptions(minZoom = 4, maxZoom = 8)) |>
+  addProviderTiles(providers$CartoDB.PositronNoLabels) |>
+  fitBounds(lng1 = -117.12776, lat1 = 14.5388286402, 
+            lng2 = -86.811982388, lat2 = 32.72083) |>
+  setMaxBounds(lng1 = -117.12776, lat1 = 14.5388286402, 
+               lng2 = -86.811982388, lat2 = 32.72083) |>
+  addPolygons(
+    fillColor = ~pal(cluster),
+    fillOpacity = 0.7,
+    color = "black",
+    weight = 1.5,
+    label = ~paste0("Cluster: ", cluster),
+    highlightOptions = highlightOptions(
+      weight = 3,
+      color = "#666",
+      fillOpacity = 0.9,
+      bringToFront = TRUE
+    )
+  ) |>
+  addLegend(
+    position = "topright",
+    pal = pal,
+    values = ~cluster,
+    title = "Cluster",
+    opacity = 0.7
+  )
+
+mapshot(mapa, file = "data/mapa_clusters.png")
+
+```
+
+![Gráfica 2. Clusters por estado](data/mapa_clusters.png)
+
+## Parte 2.
+
+Para la segudna parte, realizaremos un análisis de conglomerados utilizando un archivo que contiene las manzanas alrededor de 3KM pero en auto. Limitaremos el análisis solo al análisis de conglomerados.
+
+La gráfica 2 contiene la gráfica de codo para elegir visualmente el número de clusters. De igual que en el forma elegiremos 4.
+
+```{r, echo=FALSE, include=TRUE}
+resultados_finales_pol <- read.csv("data/resultados_finales_poligonos.csv") |>
+  mutate(
+    CVE_ENT = str_pad(as.character(CVE_ENT), width = 2, pad = "0", side = "left")
+  )
+
+
+# Calculamos métricas
+df_metricas <- resultados_finales_pol |> 
+  left_join(df_centros, by="CVE_ENT") |>
+  select(-c(lat, lon)) |>
+  mutate(
+    Poblacion = POBTOT_tot / max_viviendas_tot,
+    Sanitario = VPH_C_ELEC_tot / max_viviendas_tot,
+    Drenaje = VPH_C_ELEC_tot / max_viviendas_tot,
+    Refrigerador = VPH_DRENAJ_tot  / max_viviendas_tot,
+    Automovil = VPH_AUTOM_tot / max_viviendas_tot,
+    Televisor = VPH_TV_tot / max_viviendas_tot,
+    Computadora = VPH_PC_tot  / max_viviendas_tot,
+    Celular = VPH_CEL_tot / max_viviendas_tot,
+    Internet = VPH_INTER_tot / max_viviendas_tot,
+    TV_paga = VPH_STVP_tot / max_viviendas_tot,
+    Videojuegos = VPH_CVJ_tot / max_viviendas_tot,
+  ) |>
+  select(Estado, Poblacion, Sanitario, Drenaje, Refrigerador, Automovil, Televisor, Computadora, Celular, Internet, TV_paga, Videojuegos)
+
+# Preparamos los datos (removemos estado porque no es una variable informativa)
+A <- df_metricas |> select(-Estado)
+
+# Matriz para almacenar los resultados
+mat <- matrix(0, 6, 2) %>% data.frame()
+colnames(mat) <- c("cluster", "withinss")
+
+# Loop para probar distintos números de clusters
+for (i in 1:6) {
+  model <- kmeans(A, centers = i)
+  mat$cluster[i] <- i
+  mat$withinss[i] <- model$tot.withinss
+}
+
+model_4=kmeans(A,4)
+# Gráfica de codo
+plot(mat$withinss, type = "b", xlab = "Número de clusters", ylab = "Within", main="Gráfica 3. Método de codo para determinar clusters (segundo método)", ylim = c(0, 65))
+
+
+```
+
+En la Tabla 3 se muestran las métricas promedio por conglomerado. Destaca un cambio fuerte en las métricas respecto al primer método de la primera parte para las variables Población, Automovil, Computadora, Videojuegos e Internet. 
+
+```{r, echo=FALSE, include=TRUE}
+df_cluster <- A |>
+  mutate(Cluster = model_4$cluster) |>
+  group_by(Cluster) |>
+  summarise(
+    Poblacion = mean(Poblacion),
+    Sanitario = mean(Sanitario),
+    Drenaje = mean(Drenaje),
+    Refrigerador = mean(Refrigerador),
+    Automovil = mean(Automovil),
+    Televisor = mean(Televisor),
+    Computadora = mean(Computadora),
+    Celular = mean(Celular),
+    Internet = mean(Internet),
+    TV_paga = mean(TV_paga),
+    Videojuegos = mean(Videojuegos)
+  )
+
+df_cluster |>
+  pivot_longer(
+    cols = -Cluster,  # O la columna que identifica el conglomerado
+    names_to = "Variable",
+    values_to = "Valor"
+  ) |>
+  pivot_wider(
+    names_from = Cluster,
+    values_from = Valor
+  ) |>
+  gt() |>
+  tab_header(
+    title = "Tabla 3. Promedios por conglomerado (segundo método)"
+  ) |>
+  fmt_number(
+    columns = -Variable,
+    decimals = 3
+  )
+
+
+```
+
+Por último, en la Gráfica 4 muestra que estados se encuentran en cada conglomerado con el segundo método.
+
+```{r, echo=FALSE, include=TRUE}
+
+file_estados <- "data/mg_2020_integrado/conjunto_de_datos/00ent.shp"
+df_estados <- st_read(file_estados, quiet = TRUE) |>
+  select(CVE_ENT, geometry)
+
+df_mapa <- resultados_finales_pol |> 
+  left_join(df_centros, by = "CVE_ENT") |>
+  select(-c(lat, lon)) |>
+  mutate(cluster = model_4$cluster)
+
+df_mapa <- df_estados |>
+  left_join(df_mapa, by = "CVE_ENT") |>
+  select(geometry, cluster)
+
+df_mapa <- st_transform(df_mapa, crs = 4326)
+
+# Creamos paleta de colores
+pal <- colorFactor(palette = c("red", "blue", "green", "yellow"), 
+                   domain = df_mapa$cluster)
+
+# Crear mapa
+mapa <-leaflet(df_mapa, options = leafletOptions(minZoom = 4, maxZoom = 8)) |>
+  addProviderTiles(providers$CartoDB.PositronNoLabels) |>
+  fitBounds(lng1 = -117.12776, lat1 = 14.5388286402, 
+            lng2 = -86.811982388, lat2 = 32.72083) |>
+  setMaxBounds(lng1 = -117.12776, lat1 = 14.5388286402, 
+               lng2 = -86.811982388, lat2 = 32.72083) |>
+  addPolygons(
+    fillColor = ~pal(cluster),
+    fillOpacity = 0.7,
+    color = "black",
+    weight = 1.5,
+    label = ~paste0("Cluster: ", cluster),
+    highlightOptions = highlightOptions(
+      weight = 3,
+      color = "#666",
+      fillOpacity = 0.9,
+      bringToFront = TRUE
+    )
+  ) |>
+  addLegend(
+    position = "topright",
+    pal = pal,
+    values = ~cluster,
+    title = "Cluster",
+    opacity = 0.7
+  )
+
+mapshot(mapa, file = "data/mapa_clusters_pol.png")
+```
+
+![Gráfica 4. Clusters por estado (segundo método)](data/mapa_clusters_pol.png)
+
+
+
+
