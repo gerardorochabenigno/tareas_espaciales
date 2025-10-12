@@ -8,3 +8,7 @@ tarea1/negocios_mexico.csv
 .DS_Store
 .DS_Store
 taller/data/
+taller/.RData
+taller/.Rhistory
+taller/resultados_finales.csv
+tarea1/.DS_Store
